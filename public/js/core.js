@@ -29,6 +29,7 @@ export const state = {
   projectsLoaded: false,
   projectKey: null,
   repos: null, // org repos from /api/repos
+  features: {}, // server feature flags from /auth/me (e.g. { local: true })
 };
 
 // ---------- view registry (avoids circular imports) ----------
