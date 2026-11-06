@@ -160,3 +160,42 @@ test('server refuses to start when APP_PASSWORD is shorter than 8 characters', a
   assert.notEqual(out.code, 0);
   assert.match(out.err, /APP_PASSWORD must be at least 8/);
 });
+
+test('a malformed cookie yields 401, not a server error', async () => {
+  const r = await api('/api/sessions', { headers: { Cookie: 'dc_session=%E0%A4%A' } });
+  assert.equal(r.status, 401);
+});
+
+test('login rate limit cannot be dodged by spoofing the first X-Forwarded-For entry', async () => {
+  const port = await freePort();
+  const c = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
+    env: {
+      DEVIN_API_BASE: `http://127.0.0.1:${mockPort}`,
+      DEVIN_API_KEY: 'cog_test_key_not_real',
+      DEVIN_ORG_ID: 'test-org',
+      APP_PASSWORD: PASSWORD,
+      PORT: String(port),
+      DATA_DIR: dataDir,
+      TRUST_PROXY: '1',
+    },
+    stdio: 'ignore',
+  });
+  try {
+    await waitFor(`http://127.0.0.1:${port}/healthz`);
+    let last;
+    for (let i = 0; i < 9; i++) {
+      last = await fetch(`http://127.0.0.1:${port}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'devin-control',
+          'X-Forwarded-For': `203.0.113.${i + 1}, 198.51.100.7`,
+        },
+        body: JSON.stringify({ password: 'wrong-password' }),
+      });
+    }
+    assert.equal(last.status, 429);
+  } finally {
+    c.kill();
+  }
+});
