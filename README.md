@@ -160,7 +160,7 @@ turn it off again — the cloud tabs are unaffected either way.
 - Anyone with the password can spend your Devin quota. Use a long, unique one. Login is rate limited (8 failures / 15 min / IP).
 - Only a fixed set of endpoints is proxied; the browser cannot call anything else on the Devin API.
 - Use a Member-role service user — the key inherits whatever it can do. If the key leaks, revoke it in Settings > Devin API.
-- The default bind is `127.0.0.1`. If you set `HOST=0.0.0.0` or deploy it anywhere, put it behind HTTPS (`TRUST_PROXY=1` marks the cookie `Secure` through a proxy/tunnel).
+- The default bind is `127.0.0.1`. If you set `HOST=0.0.0.0` or deploy it anywhere, put it behind HTTPS (`TRUST_PROXY=1` marks the cookie `Secure` through a proxy/tunnel; only enable it when a proxy actually sits in front, because login rate limiting then keys on the proxy-supplied `X-Forwarded-For`). Set `SESSION_SECRET` to a long random string.
 - Don't commit `.env` or `projects.json`/`data/` (all gitignored).
 - See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
