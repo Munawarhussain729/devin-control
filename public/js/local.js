@@ -3,7 +3,7 @@
 
 import { app, state, esc, api, ago, setView, go, toast, copyText, md, fmtInt, openSheet, stopTimers } from './core.js';
 
-const lstate = { items: [], search: '', loaded: false, loading: false };
+const lstate = { items: [], search: '', loaded: false, loading: false, unavailable: '' };
 
 const base = (p) => (p || '').split('/').filter(Boolean).pop() || '';
 const isNamey = (s) => s.msgs > 0 || !/^untitled/i.test(s.title || '');
@@ -15,8 +15,8 @@ async function loadLocal(force) {
   try {
     const d = await api('GET', '/api/local/sessions');
     lstate.items = d.available ? d.items : [];
+    lstate.unavailable = d.available ? '' : d.reason || 'Local Devin data is not available on this machine.';
     lstate.loaded = true;
-    if (!d.available) toast('Local Devin data not found on this machine', true);
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -57,7 +57,7 @@ function renderLocalList() {
   let items = lstate.items;
   if (q) items = items.filter((s) => (s.title + ' ' + s.cwd + ' ' + s.id + ' ' + (s.aid || '')).toLowerCase().includes(q));
   if (!items.length) {
-    list.innerHTML = `<div class="empty">${lstate.loading ? 'Scanning local sessions…' : q ? 'No matches.' : 'No local sessions found.'}</div>`;
+    list.innerHTML = `<div class="empty">${lstate.loading ? 'Scanning local sessions…' : q ? 'No matches.' : lstate.unavailable || 'No local sessions found.'}</div>`;
     return;
   }
   // group by cwd (project dir)

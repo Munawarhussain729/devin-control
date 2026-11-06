@@ -32,7 +32,9 @@ views.login = function showLogin(msg) {
     const btn = form.querySelector('button');
     btn.disabled = true;
     try {
-      await api('POST', '/auth/login', { password: document.getElementById('pw').value });
+      const r = await api('POST', '/auth/login', { password: document.getElementById('pw').value });
+      state.features = r.features || {};
+      renderTabbar();
       go('dashboard');
     } catch (err) {
       document.getElementById('loginErr').textContent = err.message;
@@ -53,10 +55,13 @@ const TABS = [
 
 function renderTabbar() {
   const el = document.getElementById('tabbar');
-  el.innerHTML = TABS.map(
-    ([v, icon, label]) =>
-      `<button class="tab" data-v="${v}" aria-label="${label}"><span class="ti">${icon}</span><span>${label}</span></button>`
-  ).join('');
+  const tabs = TABS.filter(([v]) => v !== 'local' || state.features?.local);
+  el.innerHTML = tabs
+    .map(
+      ([v, icon, label]) =>
+        `<button class="tab" data-v="${v}" aria-label="${label}"><span class="ti">${icon}</span><span>${label}</span></button>`
+    )
+    .join('');
   el.querySelectorAll('.tab').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.v === 'new') return openNewSheet();
@@ -64,6 +69,8 @@ function renderTabbar() {
     };
   });
   // highlight active tab on view changes
+  if (el._obs) return;
+  el._obs = true;
   const obs = new MutationObserver(() => {
     el.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   });
@@ -82,7 +89,9 @@ document.addEventListener('visibilitychange', () => {
 (async function boot() {
   renderTabbar();
   try {
-    await api('GET', '/auth/me');
+    const me = await api('GET', '/auth/me');
+    state.features = me.features || {};
+    renderTabbar();
     go('dashboard');
   } catch {
     if (state.view !== 'login') go('login');

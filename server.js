@@ -35,12 +35,15 @@ function loadDotEnv() {
 loadDotEnv();
 
 const PORT = parseInt(process.env.PORT || '8787', 10);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const API_BASE = (process.env.DEVIN_API_BASE || 'https://api.devin.ai').replace(/\/+$/, '');
 const API_KEY = process.env.DEVIN_API_KEY || '';
 const ORG_ID = process.env.DEVIN_ORG_ID || '';
 const APP_PASSWORD = process.env.APP_PASSWORD || '';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+// Experimental: the Local tab reads Devin Desktop's on-disk session store and
+// drives `devin acp`. Unofficial and undocumented — off unless exactly "1".
+const ENABLE_LOCAL = process.env.ENABLE_LOCAL === '1';
 const SESSION_DAYS = 30;
 // Where local state (projects.json) lives. Override for containers/hosts that
 // mount a writable volume somewhere else.
@@ -351,7 +354,7 @@ function localSlimSessions() {
 async function runSync() {
   const [live, archived] = await Promise.all([fetchAllSessions(false), fetchAllSessions(true)]);
   const items = live.items.concat(archived.items).map(slimSession);
-  const locals = localSlimSessions();
+  const locals = ENABLE_LOCAL ? localSlimSessions() : [];
   return {
     fetched_at: Math.floor(Date.now() / 1000),
     truncated: live.truncated || archived.truncated,
@@ -462,8 +465,20 @@ function readAcpMeta(id) {
 }
 
 function listLocalSessions() {
-  if (!DatabaseSync || !fs.existsSync(LOCAL_STATE_DB))
-    return { available: false, items: [] };
+  if (!DatabaseSync)
+    return {
+      available: false,
+      reason: 'Local sessions need Node 22.5 or newer (the built-in node:sqlite module).',
+      items: [],
+    };
+  if (!fs.existsSync(LOCAL_STATE_DB))
+    return {
+      available: false,
+      reason:
+        'Devin Desktop data was not found on this machine. The Local tab only works on a machine ' +
+        'with Devin Desktop installed (set DEVIN_DESKTOP_DIR to override the path).',
+      items: [],
+    };
   if (localIndex.data && Date.now() - localIndex.at < 30000) return localIndex.data;
   const items = [];
   const db = openLocalDb(LOCAL_STATE_DB);
@@ -852,6 +867,10 @@ async function handleApi(req, res, url) {
     return send(res, 403, { detail: 'Missing X-Requested-With header' });
   }
 
+  // Local tab is opt-in: when disabled none of the local stores are touched.
+  if (p.startsWith('/api/local/') && !ENABLE_LOCAL)
+    return send(res, 404, { detail: 'Local sessions are disabled. Set ENABLE_LOCAL=1.' });
+
   // Local endpoints (not simple proxies).
   if (p === '/api/analytics' && m === 'GET') {
     try {
@@ -1052,13 +1071,15 @@ const server = http.createServer(async (req, res) => {
         return send(res, 401, { detail: 'Wrong password' });
       }
       fails.delete(ip);
-      return send(res, 200, { ok: true }, { 'Set-Cookie': cookie(req, makeToken(), SESSION_DAYS * 86400) });
+      return send(res, 200, { ok: true, features: { local: ENABLE_LOCAL } }, { 'Set-Cookie': cookie(req, makeToken(), SESSION_DAYS * 86400) });
     }
     if (p === '/auth/logout' && req.method === 'POST') {
       return send(res, 200, { ok: true }, { 'Set-Cookie': cookie(req, '', 0) });
     }
     if (p === '/auth/me') {
-      return isAuthed(req) ? send(res, 200, { ok: true }) : send(res, 401, { detail: 'Not signed in' });
+      return isAuthed(req)
+        ? send(res, 200, { ok: true, features: { local: ENABLE_LOCAL } })
+        : send(res, 401, { detail: 'Not signed in' });
     }
 
     if (p.startsWith('/api/')) {

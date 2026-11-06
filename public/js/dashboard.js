@@ -23,6 +23,10 @@ export async function loadAnalytics(force) {
 
 // Local IDE session summary for the dashboard strip (server caches 30s).
 async function loadLocalStats() {
+  if (state.features?.local === false) {
+    state.local = { count: 0 };
+    return;
+  }
   try {
     const d = await api('GET', '/api/local/sessions');
     if (!d.available) {
