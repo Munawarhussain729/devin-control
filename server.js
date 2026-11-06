@@ -147,7 +147,13 @@ function parseCookies(req) {
   const out = {};
   for (const part of (req.headers.cookie || '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    const raw = part.slice(i + 1).trim();
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(raw);
+    } catch {
+      out[part.slice(0, i).trim()] = raw; // malformed encoding: keep raw, it will fail token verification
+    }
   }
   return out;
 }
@@ -161,8 +167,13 @@ function cookie(req, value, maxAgeSec) {
 }
 function clientIp(req) {
   if (TRUST_PROXY) {
+    // Use the LAST entry: it is the one appended by our own proxy. Earlier
+    // entries are client-controlled and would let an attacker dodge the limiter.
     const xf = req.headers['x-forwarded-for'];
-    if (xf) return String(xf).split(',')[0].trim();
+    if (xf) {
+      const parts = String(xf).split(',');
+      return parts[parts.length - 1].trim() || 'unknown';
+    }
   }
   return req.socket.remoteAddress || 'unknown';
 }
@@ -692,7 +703,10 @@ function startLocalPrompt(session, prompt, mode) {
 
   let child;
   try {
-    child = spawn('devin', ['acp'], { cwd: session.cwd, env: process.env });
+    // Do not hand this panel's own secrets to the child process.
+    const childEnv = { ...process.env };
+    for (const k of ['DEVIN_API_KEY', 'DEVIN_ORG_ID', 'APP_PASSWORD', 'SESSION_SECRET']) delete childEnv[k];
+    child = spawn('devin', ['acp'], { cwd: session.cwd, env: childEnv });
   } catch (e) {
     return { error: `Could not start devin acp: ${e.message}`, status: 500 };
   }
